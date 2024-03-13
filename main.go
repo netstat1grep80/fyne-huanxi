@@ -58,7 +58,7 @@ func HttpRequest(url string, method string, jsonData []byte) ([]byte, error) {
 		"Accept-Language":    "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7",
 		"Cache-Control":      "no-cache",
 		"Connection":         "keep-alive",
-		"Cookie":             "h5=1; FFNoSNoP=1; autojump=0",
+		"Cookie":             "h5=1; FFNoSNoP=1; hxut=cd8eb833cfc3a05ec01bb50943bab9f60be3f466e4ea13065cc7ceadd961a9e981ab6dd57b682041b01afd1fc115c8ff457b7a6c52d93d9d72cb827e284c8ba7e0616ee6f7534be0cf7a5c2; uid=343776140; isvip=1; sisvip=0; uinfo=%7B%22username%22%3A%22%E6%AC%A2%E5%96%9C_5286%22%2C%22avatar%22%3A%22https%3A%2F%2Fpic8.huanxi.com%2F8a9eb00f7c2b2660017c965bd8f90a86.png%22%2C%22vip_normal%22%3A%7B%22start_time%22%3A1697183302118%2C%22level%22%3A1%2C%22contract_status%22%3A0%2C%22end_time%22%3A1728719302118%7D%2C%22vip_super%22%3A%7B%22start_time%22%3A0%2C%22level%22%3A0%2C%22contract_status%22%3A0%2C%22end_time%22%3A0%7D%2C%22vip_level%22%3A1%2C%22status%22%3A3%7D; tfstk=e08Mxq9K-hS1IkUW9dQs-awkuimd5R_fFKUAHZBqY9WQBRU9gS42Hpev6Ik6nEXegZh_XVaFLs5PgiW9ks8DdNSXXtBOnZAXEXH-y4d61q_reY3RRMAFqZ7gGCSk1C_bOCllOSA_o8Ll8MHgfm7iSElG-TVRBhReAhIGUBm7urYQyGXy694qUefiFTRNKE8A4gqU4_1gl6lv8oZfb61CeI8cKitF--5KtXqJGG5CNThntoNOb61hcXc32dSNO_yh.",
 		"Host":               "www.huanxi.com",
 		"Pragma":             "no-cache",
 		"Referer":            "https://www.huanxi.com/",
@@ -181,6 +181,7 @@ func executeFFmpeg(m3u8Url, startTime, duration, title string, logOutput *widget
 	logOutput.Append(logPrintln(strings.Join(ffmpegCommand, " ")))
 
 	if runtime.GOOS == "windows" {
+		//windows下，必须只能调用path下的ffmpeg路径，不能直接引用文件地址 。
 		path := os.Getenv("PATH")
 		path = path + ";" + GetCurrentDirectory() + string(filepath.Separator) + "lib"
 		os.Setenv("PATH", path)
@@ -216,9 +217,21 @@ func executeFFmpeg(m3u8Url, startTime, duration, title string, logOutput *widget
 
 	//done被关闭后，上面的go func也就停止执行了。
 	close(done)
-	logOutput.SetText("【视频采集成功】" + GetCurrentDirectory() + string(filepath.Separator) + title + ".mp4")
+	logOutput.SetText("【视频采集成功】" + GetCurrentDirectory() + string(filepath.Separator) + title + ".mp4\n\n")
 
 	return
+}
+
+func ReadCookie() (string, error) {
+	fileName := GetCurrentDirectory() + string(filepath.Separator) + "cookie.txt"
+
+	data, err := os.ReadFile(fileName)
+	if err != nil {
+		fmt.Println("无法读取文件:", err)
+		return "", err
+	}
+
+	return string(data), nil
 }
 
 var btn *widget.Button
@@ -255,6 +268,11 @@ func main() {
 	}
 	logger = log.New(logFile, "", log.LstdFlags)
 
+	cookieValue, err := ReadCookie()
+	if err != nil {
+		//logger.Fatal(err)
+		cookieValue = "错误：当前目录下未找到cookie.txt . \n" + err.Error()
+	}
 	app := app.New()
 
 	w := app.NewWindow("欢喜传媒片头采集器")
@@ -264,6 +282,11 @@ func main() {
 	urlText := widget.NewEntry()
 	urlText.SetPlaceHolder("播放页地址：https://www.huanxi.com/play_51973.shtml?from=m")
 	urlText.MinSize()
+
+	cookieText := widget.NewMultiLineEntry()
+	cookieText.Wrapping = fyne.TextWrapBreak
+	cookieText.SetMinRowsVisible(10)
+	cookieText.SetText(cookieValue)
 	// 创建一个多行文本输入框用于日志输出
 	logOutput := widget.NewMultiLineEntry()
 	//logOutput.Disable()
@@ -279,7 +302,7 @@ func main() {
 			if huanxi, err := NewHuanxi(url); err == nil {
 				if m3u8, err := huanxi.GetM3u8(); err == nil {
 					logOutput.Append("获取到m3u8文件地址：" + logPrintln(m3u8))
-					go executeFFmpeg(m3u8, "00:00:10", "00:05:00", huanxi.Title, logOutput)
+					go executeFFmpeg(m3u8, "00:00:10", "00:06:00", huanxi.Title, logOutput)
 				} else {
 					logOutput.Append(logPrintln(err.Error()))
 				}
@@ -295,6 +318,7 @@ func main() {
 	content := container.New(
 		layout.NewVBoxLayout(),
 		split,
+		cookieText,
 		logOutput,
 	)
 	w.SetContent(content)
